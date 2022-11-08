@@ -17,20 +17,16 @@ class UserType(DjangoObjectType):
 class DebtType(DjangoObjectType):
     class Meta:
         model = Debt
-        fields = ('id', 'lender', 'borrower', 'expiration_date')
+        fields = ('lender', 'borrower', "amount", 'expiration_date')
 
 
 class Query(graphene.ObjectType):
-    users = graphene.List(UserType)
-    debts = graphene.List(DebtType)
+    expired_debts = graphene.List(DebtType, datetime=graphene.DateTime())
 
-    def resolve_users(root, info, **kwargs):
-        # Querying a list
-        return User.objects.all()
+    def resolve_expired_debts(self, info, datetime):
+        """Return the debts that expires after the datetime"""
 
-    def resolve_debts(root, info, **kwargs):
-        # Querying a list
-        return Debt.objects.all()
+        return Debt.objects.filter(expiration_date__lt=datetime)
 
 
 schema = graphene.Schema(query=Query)

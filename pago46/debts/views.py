@@ -11,7 +11,17 @@ from .serializers import UserSerializer, DebtSerializer
 from .models import User, Debt, DebtAccumulate
 
 
-class SettleUpView(generics.GenericAPIView):
+def create_user_object(user):
+    """Create the user object"""
+    user_object = {
+        "name": user.username,
+        "owes": DebtAccumulate.owed(user),
+        "owed_by": DebtAccumulate.owers(user),
+        "balance": DebtAccumulate.balance(user)
+    }
+    return user_object
+
+class SettleUpView(generics.ListAPIView):
 
     queryset = User.objects.all()
 
@@ -28,37 +38,7 @@ class SettleUpView(generics.GenericAPIView):
             users = users.filter(username__in=user_names_list).order_by("username")
 
         for user in users:
-            # Obtain the sum of debts by each lender and borrower
-            owes = (
-                Debt.objects.filter(borrower=user)
-                .values("lender__username")
-                .order_by("lender__username")
-                .annotate(amount=Sum("amount"))
-            )
-            owed_by = (
-                Debt.objects.filter(lender=user)
-                .values("borrower__username")
-                .order_by("borrower__username")
-                .annotate(amount=Sum("amount"))
-            )
-            owes_dict = {}
-            owes_sum = 0
-            for item in owes:
-                owes_dict[item["lender__username"]] = item["amount"]
-                owes_sum += item["amount"]
-            owed_by_dict = {}
-            owed_by_sum = 0
-            for item in owed_by:
-                owed_by_dict[item["borrower__username"]] = item["amount"]
-                owed_by_sum += item["amount"]
-
-            user_object = {
-                "name": user.username,
-                "owes": DebtAccumulate.owed(user),
-                "owed_by": DebtAccumulate.owers(user),
-                "balance": DebtAccumulate.balance(user)
-            }
-            user_objects.append(user_object)
+            user_objects.append(create_user_object(user))
 
         return Response(user_objects)
 
@@ -76,40 +56,62 @@ class AddUserView(generics.ListCreateAPIView):
             if not User.objects.filter(username=username).exists():
                 new_user = User(username=username)
                 new_user.save()
-                user_object = {
-                    "name": new_user.username,
-                    "owes": {},
-                    "owed_by": {},
-                    "balance": 0
-                }
-                return Response(user_object)
+                return Response(create_user_object(new_user))
         return Response()
 
 
 class CreateIOUView(generics.ListCreateAPIView):
     """Add new IOU"""
 
+    serializer_class = DebtSerializer
+
     def post(self, request):
         """Create a new debt"""
+
+        # If there is one parameter missing raise an Exception
         try:
             lender = request.query_params["lender"]
             borrower = request.query_params["borrower"]
-            amount = float(request.query_params["amount"])
+            amount = request.query_params["amount"]
+            expiration_date = request.query_params["expiration"]
         except KeyError as e:
-            print(f"There is no {e} data in the request")
-        except ValueError as v:
-            print(f"Invalid {v} value for amount")
+            raise KeyError(f"There is no {e} data in the request")
 
-        lender = User.objects.get(username=lender)
-        borrower = User.objects.get(username=borrower)
-        expiration_date = datetime.now()
+        # Validate the values of amount and expiration
+        try:
+            amount = float(amount)
+        except ValueError as v:
+            raise ValueError("Invalid value for amount")
+
+        try:
+            expiration_date = datetime.strptime(expiration_date, '%d/%m/%Y')
+        except ValueError as v:
+            raise ValueError("Invalid value for expiration")
+
+        # Raise and exception if there is no lender or borrower
+        try:
+            lender = User.objects.get(username=lender)
+        except User.DoesNotExist as u:
+            raise User.DoesNotExist(f"There is no user {lender}")
+
+        try:
+            borrower = User.objects.get(username=borrower)
+        except User.DoesNotExist as u:
+            raise User.DoesNotExist(f"There is no user {borrower}")
 
         # If there are a lender and a borrower
         if lender and borrower:
-            debt = Debt(
-                lender=lender,
-                borrower=borrower,
-                amount=amount,
-                expiration_date=expiration_date
-            )
-            debt.save()
+            debt_data = {
+                "lender": lender.id,
+                "borrower": borrower.id,
+                "amount": amount,
+                "expiration_date": expiration_date
+            }
+            serializer = self.serializer_class(data=debt_data, many=False)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+            return Response({"users": [create_user_object(lender), create_user_object(borrower)]})
+
+        return Response()
+
