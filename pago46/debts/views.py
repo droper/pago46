@@ -2,21 +2,20 @@
 """Views of debts app"""
 from datetime import datetime
 
-from django.db.models import Sum, F, Count
 
 from rest_framework import generics
 from rest_framework.response import Response
 
-from .serializers import UserSerializer, DebtSerializer
-from .models import User, Debt, DebtAccumulate
+from .serializers import DebtSerializer
+from .models import User, DebtAccumulate
 
 
 def create_user_object(user):
     """Create the user object"""
     user_object = {
         "name": user.username,
-        "owes": DebtAccumulate.owed(user),
-        "owed_by": DebtAccumulate.owers(user),
+        "owes": DebtAccumulate.user_creditors(user),
+        "owed_by": DebtAccumulate.user_debtors(user),
         "balance": DebtAccumulate.balance(user)
     }
     return user_object

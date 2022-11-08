@@ -22,12 +22,14 @@ class Debt(models.Model):
     class Meta:
         ordering = ['-expiration_date']
 
-    def clean(self):
+    def clean(self, *args, **kwargs):
         """Apply business rules to the model"""
 
         # The lender and the borrower fields can't be the same user
         if self.lender == self.borrower:
             raise ValidationError("Lender and borrower can't be the same")
+
+        super(Debt, self).clean(*args, **kwargs)
 
     def save(self, *args, **kwargs):
         """Update the accumulated debt when creating a new debt"""
@@ -58,7 +60,7 @@ class DebtAccumulate(models.Model):
         unique_together = ('lender', 'borrower')
 
     @classmethod
-    def owers(cls, lender):
+    def user_debtors(cls, lender):
         """Returns all the users that have borrowed from the lender and the amount"""
 
         debts = cls.objects.filter(lender=lender).values("borrower__username", "total_amount")
@@ -68,7 +70,7 @@ class DebtAccumulate(models.Model):
         return owers_dict
 
     @classmethod
-    def owed(cls, borrower):
+    def user_creditors(cls, borrower):
         """Returns all the users that have lended to the borrower and the amount"""
 
         debts = cls.objects.filter(borrower=borrower).values("lender__username", "total_amount")
@@ -77,37 +79,13 @@ class DebtAccumulate(models.Model):
             owed_dict[item["lender__username"]] = item["total_amount"]
         return owed_dict
 
-    @classmethod
-    def calculate_total_amount(cls, lender, borrower):
-        """Update the amount for the lender and borrower"""
-
-        if lender == borrower:
-            raise Exception("Lender and borrower can't be the same")
-        # Filter the debt with the lender and borrower and obtain the total amount
-        # if there are no debts, return False
-        amount = (
-            Debt.objects.filter(lender=lender, borrower=borrower)
-            .annotate(amount=Sum("amount"))
-        )
-
-        if not amount:
-            return False
-
-        # If there is a register, update the accumulated amount, if not
-        # create a new one with the amount
-        cls.objects.update_or_create(
-            lender=lender,
-            borrower=borrower,
-            defaults={"total_amount": amount}
-        )
-        return True
 
     @classmethod
     def balance(cls, user):
         """Return the balance of a user"""
 
-        owed_by_dict = cls.owers(user)
-        owes_dict = cls.owed(user)
+        owed_by_dict = cls.user_debtors(user)
+        owes_dict = cls.user_creditors(user)
 
         owed_by_sum = sum([value for value in owed_by_dict.values()])
         owes_sum = sum([value for value in owes_dict.values()])
