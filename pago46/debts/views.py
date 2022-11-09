@@ -1,12 +1,12 @@
 # encoding: utf-8
 """Views of debts app"""
-from datetime import datetime
 
+from datetime import datetime
 
 from rest_framework import generics
 from rest_framework.response import Response
 
-from .serializers import DebtSerializer
+from .serializers import DebtSerializer, UserSerializer
 from .models import User, DebtAccumulate
 
 
@@ -16,9 +16,10 @@ def create_user_object(user):
         "name": user.username,
         "owes": DebtAccumulate.user_creditors(user),
         "owed_by": DebtAccumulate.user_debtors(user),
-        "balance": DebtAccumulate.balance(user)
+        "balance": DebtAccumulate.balance(user),
     }
     return user_object
+
 
 class SettleUpView(generics.ListAPIView):
 
@@ -33,7 +34,9 @@ class SettleUpView(generics.ListAPIView):
         users_names = request.query_params.get("users")
 
         if users_names:
-            user_names_list = list(map(str.strip, request.query_params.get("users").split(",")))
+            user_names_list = list(
+                map(str.strip, request.query_params.get("users").split(","))
+            )
             users = users.filter(username__in=user_names_list).order_by("username")
 
         for user in users:
@@ -50,8 +53,8 @@ class AddUserView(generics.ListCreateAPIView):
 
         # If there is a user parameter and the username is not repeated
         # Create a new user and return the user object, else, return nothing
-        if "user" in request.query_params:
-            username = request.query_params.get("user")
+        if "user" in request.data:
+            username = request.data.get("user")
             if not User.objects.filter(username=username).exists():
                 new_user = User(username=username)
                 new_user.save()
@@ -69,28 +72,28 @@ class CreateIOUView(generics.ListCreateAPIView):
 
         # If there is one parameter missing raise an Exception
         try:
-            lender = request.query_params["lender"]
-            borrower = request.query_params["borrower"]
-            amount = request.query_params["amount"]
-            expiration_date = request.query_params["expiration"]
+            lender = request.data["lender"]
+            borrower = request.data["borrower"]
+            amount = request.data["amount"]
+            expiration_date = request.data["expiration"]
         except KeyError as e:
             raise KeyError(f"There is no {e} data in the request")
 
         # Validate the values of amount and expiration
         try:
             amount = float(amount)
-        except ValueError as v:
+        except ValueError:
             raise ValueError("Invalid value for amount")
 
         try:
-            expiration_date = datetime.strptime(expiration_date, '%d/%m/%Y')
-        except ValueError as v:
+            expiration_date = datetime.strptime(expiration_date, "%Y-%M-%d")
+        except ValueError:
             raise ValueError("Invalid value for expiration")
 
         # Raise and exception if there is no lender or borrower
         try:
             lender = User.objects.get(username=lender)
-        except User.DoesNotExist as u:
+        except User.DoesNotExist:
             raise User.DoesNotExist(f"There is no user {lender}")
 
         try:
@@ -104,13 +107,14 @@ class CreateIOUView(generics.ListCreateAPIView):
                 "lender": lender.id,
                 "borrower": borrower.id,
                 "amount": amount,
-                "expiration_date": expiration_date
+                "expiration_date": expiration_date,
             }
             serializer = self.serializer_class(data=debt_data, many=False)
             serializer.is_valid(raise_exception=True)
             serializer.save()
 
-            return Response({"users": [create_user_object(lender), create_user_object(borrower)]})
+            return Response(
+                {"users": [create_user_object(lender), create_user_object(borrower)]}
+            )
 
         return Response()
-

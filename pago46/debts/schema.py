@@ -1,3 +1,6 @@
+# encoding: utf-8
+"""Schema for the graphene api"""
+
 import graphene
 from graphene_django import DjangoObjectType
 
@@ -9,18 +12,24 @@ User = get_user_model()
 
 
 class UserType(DjangoObjectType):
+    """User Type for graphene"""
+
     class Meta:
         model = get_user_model()
-        fields = ('username',)
+        fields = ("username",)
 
 
 class DebtType(DjangoObjectType):
+    """Debt Type for graphene"""
+
     class Meta:
         model = Debt
-        fields = ('lender', 'borrower', "amount", 'expiration_date')
+        fields = ("lender", "borrower", "amount", "expiration_date")
 
 
 class Query(graphene.ObjectType):
+    """Query class for graphene"""
+
     expired_debts = graphene.List(DebtType, datetime=graphene.DateTime())
 
     def resolve_expired_debts(self, info, datetime):
