@@ -33,6 +33,7 @@ class SettleUpView(generics.ListAPIView):
         users = self.get_queryset()
         users_names = request.query_params.get("users")
 
+        # If there are user names in the request use them to find the users
         if users_names:
             user_names_list = list(
                 map(str.strip, request.query_params.get("users").split(","))
@@ -40,7 +41,7 @@ class SettleUpView(generics.ListAPIView):
             users = users.filter(username__in=user_names_list).order_by("username")
 
         for user in users:
-            user_objects.append(create_user_object(user))
+           user_objects.append(create_user_object(user))
 
         return Response(user_objects)
 
